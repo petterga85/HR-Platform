@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HR Portal (Standalone)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fb;
+      margin: 0; padding: 0;
+    }
+    header {
+      background: #34495e; color: white; padding: 1rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { margin: 0; font-size: 1.2rem; }
+    nav button { margin-left: .5rem; }
+    .container { max-width: 800px; margin: 2rem auto; padding: 1rem; background: white; border-radius: 6px; }
+    h2 { margin-top: 0; }
+    label { display: block; margin-top: .5rem; }
+    input, textarea, select {
+      width: 100%; padding: .5rem; margin-top: .2rem; border: 1px solid #ccc; border-radius: 4px;
+    }
+    button { padding: .5rem 1rem; margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: .5rem; border: 1px solid #ddd; }
+    .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: .8rem; }
+    .pending { background: #ffeaa7; }
+    .approved { background: #55efc4; }
+    .rejected { background: #ff7675; color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HR Portal</h1>
+    <nav id="nav"></nav>
+  </header>
+
+  <div class="container" id="app"></div>
+
+<script>
+/* --- Simple LocalStorage "Database" --- */
+const DB_KEY = "hr_portal_demo";
+function loadDB() {
+  let db = JSON.parse(localStorage.getItem(DB_KEY));
+  if (!db) {
+    db = {
+      users: [
+        {id:"hr1", name:"HR Admin", email:"hr@company.com", password:"password", role:"hr"}
+      ],
+      profiles: {},
+      leaves: []
+    };
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+  }
+  return db;
+}
+function saveDB(db){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+let db = loadDB();
+let currentUser = JSON.parse(localStorage.getItem("currentUser") || "null");
+
+/* --- Navigation --- */
+function renderNav() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = "";
+  if(currentUser){
+    nav.innerHTML = `
+      <span>Welcome, ${currentUser.name} (${currentUser.role})</span>
+      <button onclick="go('dashboard')">Dashboard</button>
+      ${currentUser.role==="hr" ? '<button onclick="go(\'hr\')">HR Panel</button>' : ""}
+      <button onclick="go('profile')">Profile</button>
+      <button onclick="go('leave')">Leave</button>
+      <button onclick="logout()">Logout</button>
+    `;
+  }else{
+    nav.innerHTML = `
+      <button onclick="go('login')">Login</button>
+      <button onclick="go('signup')">Sign Up</button>
+    `;
+  }
+}
+
+/* --- Pages --- */
+function go(page){ render(page); }
+
+function logout(){
+  currentUser = null;
+  localStorage.removeItem("currentUser");
+  renderNav();
+  go("login");
+}
+
+function render(page){
+  const app = document.getElementById("app");
+  if(page==="login"){
+    app.innerHTML = `
+      <h2>Login</h2>
+      <form onsubmit="doLogin(event)">
+        <label>Email <input type="email" id="loginEmail" required></label>
+        <label>Password <input type="password" id="loginPass" required></label>
+        <button>Login</button>
+      </form>
+      <p>Seed HR account: hr@company.com / password</p>
+    `;
+  }
+  if(page==="signup"){
+    app.innerHTML = `
+      <h2>Employee Sign Up</h2>
+      <form onsubmit="doSignup(event)">
+        <label>Name <input id="suName" required></label>
+        <label>Email <input type="email" id="suEmail" required></label>
+        <label>Password <input type="password" id="suPass" required></label>
+        <label>Department <input id="suDept"></label>
+        <button>Create Account</button>
+      </form>
+    `;
+  }
+  if(page==="dashboard"){
+    app.innerHTML = `
+      <h2>Dashboard</h2>
+      <p>Hello ${currentUser.name}, you are logged in as <b>${currentUser.role}</b>.</p>
+    `;
+  }
+  if(page==="profile"){
+    const profile = db.profiles[currentUser.id] || {};
+    app.innerHTML = `
+      <h2>My Profile</h2>
+      <form onsubmit="updateProfile(event)">
+        <label>Phone <input id="prPhone" value="${profile.phone||''}"></label>
+        <label>Address <input id="prAddr" value="${profile.address||''}"></label>
+        <label>Department <input id="prDept" value="${profile.department||''}"></label>
+        <button>Save</button>
+      </form>
+    `;
+  }
+  if(page==="leave"){
+    let myLeaves = db.leaves.filter(l=>l.userId===currentUser.id);
+    if(currentUser.role==="hr") myLeaves = db.leaves;
+    app.innerHTML = `
+      <h2>Leave Requests</h2>
+      ${currentUser.role==="employee" ? `
+        <form onsubmit="requestLeave(event)">
+          <label>Start <input type="date" id="lvStart" required></label>
+          <label>End <input type="date" id="lvEnd" required></label>
+          <label>Reason <textarea id="lvReason" required></textarea></label>
+          <button>Submit Request</button>
+        </form>` : ""}
+      <table>
+        <tr><th>Employee</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Action</th></tr>
+        ${myLeaves.map(l=>`
+          <tr>
+            <td>${db.users.find(u=>u.id===l.userId)?.name||''}</td>
+            <td>${l.start}</td>
+            <td>${l.end}</td>
+            <td>${l.reason}</td>
+            <td><span class="badge ${l.status}">${l.status}</span></td>
+            <td>
+              ${currentUser.role==="hr" && l.status==="pending" ? `
+                <button onclick="setLeave('${l.id}','approved')">Approve</button>
+                <button onclick="setLeave('${l.id}','rejected')">Reject</button>` : ""}
+            </td>
+          </tr>
+        `).join("")}
+      </table>
+    `;
+  }
+  if(page==="hr" && currentUser.role==="hr"){
+    app.innerHTML = `
+      <h2>HR Panel - Employees</h2>
+      <table>
+        <tr><th>Name</th><th>Email</th><th>Dept</th></tr>
+        ${db.users.filter(u=>u.role==="employee").map(u=>`
+          <tr>
+            <td>${u.name}</td>
+            <td>${u.email}</td>
+            <td>${db.profiles[u.id]?.department||''}</td>
+          </tr>
+        `).join("")}
+      </table>
+    `;
+  }
+}
+
+/* --- Actions --- */
+function doLogin(e){
+  e.preventDefault();
+  const email=document.getElementById("loginEmail").value;
+  const pass=document.getElementById("loginPass").value;
+  const user=db.users.find(u=>u.email===email && u.password===pass);
+  if(user){
+    currentUser=user;
+    localStorage.setItem("currentUser", JSON.stringify(user));
+    renderNav(); go("dashboard");
+  }else alert("Invalid credentials");
+}
+
+function doSignup(e){
+  e.preventDefault();
+  const name=document.getElementById("suName").value;
+  const email=document.getElementById("suEmail").value;
+  const pass=document.getElementById("suPass").value;
+  if(db.users.some(u=>u.email===email)){ alert("Email exists"); return; }
+  const id="u"+Date.now();
+  const user={id,name,email,password:pass,role:"employee"};
+  db.users.push(user);
+  db.profiles[id]={department:document.getElementById("suDept").value};
+  saveDB(db);
+  currentUser=user;
+  localStorage.setItem("currentUser", JSON.stringify(user));
+  renderNav(); go("dashboard");
+}
+
+function updateProfile(e){
+  e.preventDefault();
+  db.profiles[currentUser.id]={ 
+    phone:document.getElementById("prPhone").value,
+    address:document.getElementById("prAddr").value,
+    department:document.getElementById("prDept").value
+  };
+  saveDB(db);
+  alert("Profile saved");
+}
+
+function requestLeave(e){
+  e.preventDefault();
+  const lv={id:"l"+Date.now(), userId:currentUser.id,
+    start:document.getElementById("lvStart").value,
+    end:document.getElementById("lvEnd").value,
+    reason:document.getElementById("lvReason").value,
+    status:"pending"};
+  db.leaves.push(lv); saveDB(db);
+  go("leave");
+}
+
+function setLeave(id,status){
+  const lv=db.leaves.find(l=>l.id===id);
+  if(lv){ lv.status=status; saveDB(db); go("leave"); }
+}
+
+/* --- Init --- */
+renderNav();
+go(currentUser ? "dashboard" : "login");
+</script>
+</body>
+</html>
