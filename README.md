@@ -1,0 +1,2 @@
+HR Portal
+responsive web-based application that enables HR professionals to manage employee data, approve leave requests, and facilitate the onboarding process with ease. The portal also empowers employees to register, submit personal information, and access HR-related services efficiently. The overall objective is to enhance workforce management, reduce administrative burden, and improve the employee experience through a centralized digital solution.
